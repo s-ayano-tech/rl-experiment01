@@ -384,10 +384,12 @@
         timeout_count_training: 0,
         follow_accurate_training: 0,
         follow_inaccurate_training: 0, 
+        total_rt_training: 0,
         total_clicks_test: 0,
         timeout_count_test: 0,
         follow_accurate_test: 0,
         follow_inaccurate_test: 0,
+        total_rt_test: 0,
         avoided_coins_training: 0,
         avoided_coins_follow_accurate_training: 0,
         avoided_coins_follow_inaccurate_training: 0, 
@@ -810,6 +812,7 @@
             window.cycle_stats = {
                 follow_acc: 0,
                 follow_inacc: 0,
+                rt: 'timeout'
             };
         },
         on_load: function(){
@@ -870,8 +873,10 @@
 
                 let now = Date.now();
                 let rt = now - window.choice_start_time;
+                window.cycle_stats.rt = rt;
 
                 if (current_phase === 'training') {
+                    summary_data.total_rt_training += rt;
                     let loss_val = d.loss_amount;
                     let avoided_val = 80 - loss_val; // -80枚と比べて防げた枚数
 
@@ -915,6 +920,7 @@
                     }, FEEDBACK_DURATION_TRAIN);
 
                 } else if (current_phase === 'test') {
+                    summary_data.total_rt_test += rt;
                     // ★テストフェーズ：金額の表示はなし、宝箱の中身は「？」
                     playAudio('click');
                     let imgEl = document.getElementById('chest-img');
@@ -976,6 +982,7 @@
             data.block = d.block;
             data.cycle_follow_accurate = window.cycle_stats.follow_acc;
             data.cycle_follow_inaccurate = window.cycle_stats.follow_inacc;
+            data.cycle_rt = window.cycle_stats.rt;
         }
     };
 
@@ -1159,7 +1166,8 @@
         type: jsPsychSurveyHtmlForm,
         on_start: ()=> { document.getElementById('trial-counter').style.display = 'none'; document.getElementById('score-board').style.display = 'none'; },
         html: function() {
-            let speech_text = "Fを押せば<br>-0枚";
+            let speech_text_inaccurate = "Fを押せば<br>-0枚";
+            let speech_text_accurate = "Fを押せば<br>-60枚"; 
             return `
             <div class="instruction-wrap" style="text-align:center; padding: 15px; margin: 10px auto; max-width: 650px;">
                 <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 16px;">今後、それぞれの人物のアドバイスにどの程度従うと思いますか？</h3>
@@ -1167,7 +1175,7 @@
                 
                 <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:20px;">
                     <div class="character-box" style="position:relative;">
-                        <div class="speech-bubble" style="font-size:14px; padding:6px 10px; min-height:auto; width:max-content; bottom:105%; border-width:2px; line-height:1.3;">${speech_text}</div>
+                        <div class="speech-bubble" style="font-size:14px; padding:6px 10px; min-height:auto; width:max-content; bottom:105%; border-width:2px; line-height:1.3;">${speech_text_inaccurate}</div>
                         <img src="${experiment_data.inaccurate_img}" style="width:20vw; max-width:80px; height:auto; object-fit:contain; display:block;">
                     </div>
                     <div style="text-align:left; font-size: 14px; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; width:100%;">
@@ -1179,7 +1187,7 @@
                 
                 <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:10px;">
                     <div class="character-box" style="position:relative;">
-                        <div class="speech-bubble" style="font-size:14px; padding:6px 10px; min-height:auto; width:max-content; bottom:105%; border-width:2px; line-height:1.3;">${speech_text}</div>
+                        <div class="speech-bubble" style="font-size:14px; padding:6px 10px; min-height:auto; width:max-content; bottom:105%; border-width:2px; line-height:1.3;">${speech_text_accurate}</div>
                         <img src="${experiment_data.accurate_img}" style="width:20vw; max-width:80px; height:auto; object-fit:contain; display:block;">
                     </div>
                     <div style="text-align:left; font-size: 14px; display:flex; flex-wrap:wrap; gap:8px; justify-content:center; width:100%;">
@@ -1230,6 +1238,116 @@
         }
     });
 
+    // 9. GPT-2s（般化プライアンス・トラッキング尺度）の測定
+    function createGPT2sForm() {
+        const items = [
+            {
+                num: 1,
+                situation: "1. 家族とのあいだで、意見が合わずに対立をしてしまった。その時、あなたはどうしていますか。",
+                a: "A. 今まで、上手くいった方法を用いて自分の意見を述べ、どうなるか判断する。",
+                b: "B. 家族がどう思っているかを優先して、機嫌を損ねないように家族の意見に合わせる。"
+            },
+            {
+                num: 2,
+                situation: "2. 配偶者や恋人、自分にとって大切な人から、自分があまり興味がないイベントや観光地に参加しようと誘われた。その時、あなたはどうしていますか。",
+                a: "A. これまでの経験を踏まえて、自分の気持ちを相手に伝えて、行くかどうかを判断する。",
+                b: "B. 相手の機嫌が悪くならないように（嫌われないように）、振る舞う。"
+            },
+            {
+                num: 3,
+                situation: "3. 友人から遊びに誘われたが、気が乗らないため、できれば行きたくない。その時、あなたはどうしていますか。",
+                a: "A. これまでの経験を活かし、断りや日時変更の連絡を相手に伝えて、どうなるか様子を見る。",
+                b: "B. 友人関係を壊したくないので、付き合う。"
+            },
+            {
+                num: 4,
+                situation: "4. 今後の進路・キャリアにおいて、どの道に進もうか迷った時、あなたはどうしていますか。",
+                a: "A. 自分の経験や考えをもとに、実際に活動しながら、さらに進むべき進路・キャリアを見つけていく。",
+                b: "B. 自分にとって重要な他者（親や恋人、友人や上司など）に言われたとおりの進路・キャリアを選ぶ。"
+            },
+            {
+                num: 5,
+                situation: "5. 新たな勉強や習いごとを始める時、あなたはどうしていますか。",
+                a: "A. これまでの学習経験を活かしつつ、自らの楽しみをもとに、続けるかどうか判断する。",
+                b: "B. 重要な他者（親や恋人、友人や上司など）からの悪い評価を避けるために、頑張って続ける。"
+            },
+            {
+                num: 6,
+                situation: "6. 体のケア（運動、リラックスする活動、ダイエットや健康維持・増進に関する活動など）について、それらを行っている理由はなぜでしょうか。",
+                a: "A. これまでやってみて、とても良い効果がでているから。",
+                b: "B. 重要な他者（親や恋人、友人や上司など）がよいと言っている方法だから。"
+            },
+            {
+                num: 7,
+                situation: "7. 学業・仕事・趣味など、創造性や自己表現が求められるもの（作品・制作、執筆、料理、企画立案など）において、普段、どのように取り組んでいますか。",
+                a: "A. これまでの失敗・成功体験を踏まえながら、自由に取り組む。",
+                b: "B. 重要な他者（親や恋人、友人や上司など）から、悪い評価を受けないために、よく見られるようなものを作る。"
+            },
+            {
+                num: 8,
+                situation: "8. 上司やプロジェクトチームから、自分が出したアイデアに対して、多くの指摘を受けた時、あなたはどうしていますか。",
+                a: "A. これまでの失敗・成功体験を踏まえながら、アイデアをブラッシュアップした。",
+                b: "B. 自分の立場（地位・名声・評判）を気にして、すべて言われたとおりに修正した。または、自分のアイデアを取り下げた。"
+            }
+        ];
+
+        // ★ 白い枠（instruction-wrap）自体に max-height: 75vh と overflow-y: auto を設定して枠内スクロールにする
+        let html = `<div id="gpt2s-box" class="instruction-wrap" style="text-align:left; max-width: 700px; max-height: 75vh; overflow-y: auto; margin: 10px auto;">
+            <h3 style="margin-top:0; text-align:center;">普段の行動についての質問</h3>
+            <p style="font-size:14px;">1〜8の問いについて、AとBに示した行動をとることがどの程度ありますか。普段のあなたの行動にもっとも当てはまる程度を選択してください。<br><strong>※AとBの両方に回答するようにしてください。</strong></p>
+            <p style="font-size:14px; text-align:center; font-weight:bold; background:#f9f9f9; padding:8px; border-radius:6px;">1（全く当てはまらない） 〜 5（非常に当てはまる）</p>`;
+
+        items.forEach(item => {
+            html += `
+            <div style="margin:20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 8px; background-color: #fafafa;">
+                <p style="margin:0 0 12px 0; font-weight:bold; font-size:15px;">${item.situation}</p>
+                
+                <div style="margin-bottom: 15px; padding: 10px; background: #fff; border-radius: 6px; border: 1px solid #eee;">
+                    <p style="margin:0 0 8px 0; font-size:14px;">${item.a}</p>
+                    <div class="radio-group" style="justify-content: space-around;">
+                        ${[1,2,3,4,5].map(v => `<label><input type="radio" name="gpt2s_${item.num}a" value="${v}" required> ${v}</label>`).join('')}
+                    </div>
+                </div>
+
+                <div style="padding: 10px; background: #fff; border-radius: 6px; border: 1px solid #eee;">
+                    <p style="margin:0 0 8px 0; font-size:14px;">${item.b}</p>
+                    <div class="radio-group" style="justify-content: space-around;">
+                        ${[1,2,3,4,5].map(v => `<label><input type="radio" name="gpt2s_${item.num}b" value="${v}" required> ${v}</label>`).join('')}
+                    </div>
+                </div>
+            </div>`;
+        });
+        html += `</div>`;
+        return html;
+    }
+
+    timeline.push({
+        type: jsPsychSurveyHtmlForm,
+        html: createGPT2sForm(),
+        button_label: '次へ',
+        on_load: () => {
+            // 白い枠のスクロール位置を一番上（問1）に合わせておく
+            let box = document.getElementById('gpt2s-box');
+            if (box) box.scrollTop = 0;
+        },
+        on_finish: function(data) {
+            if (data && data.response) {
+                let tr_total = 0;
+                let pl_total = 0;
+                for (let i = 1; i <= 8; i++) {
+                    let val_a = parseInt(data.response[`gpt2s_${i}a`], 10) || 0;
+                    let val_b = parseInt(data.response[`gpt2s_${i}b`], 10) || 0;
+                    experiment_data[`gpt2s_${i}a`] = val_a;
+                    experiment_data[`gpt2s_${i}b`] = val_b;
+                    tr_total += val_a;
+                    pl_total += val_b;
+                }
+                experiment_data.gpt2s_tracking_total = tr_total;
+                experiment_data.gpt2s_pliance_total = pl_total;
+            }
+        }
+    });
+
     var GAS_URL = "https://script.google.com/macros/s/AKfycby23t9fcKJT1LnRIjpLTdMVCovavOMoXL9xBAyvyhuEITL_hi4XBYCznWgBUB6pMW3cig/exec";
 
     timeline.push({
@@ -1247,6 +1365,11 @@
           var train_time = (typeof time_data !== 'undefined' && time_data.training_start) ? Math.round((time_data.training_end - time_data.training_start) / 1000) : 0;
           var test_time = (typeof time_data !== 'undefined' && time_data.test_start) ? Math.round((time_data.test_end - time_data.test_start) / 1000) : 0;
           var total_time = (typeof experiment_start_time !== 'undefined') ? Math.round((end_now - experiment_start_time) / 1000) : 0;
+          // 平均反応時間の計算：小数点第2位まで、0回の場合は0
+          var mean_rt_train = (summary_data.total_clicks_training > 0) ? Number((summary_data.total_rt_training / summary_data.total_clicks_training).toFixed(2)) : 0;
+          var mean_rt_test = (summary_data.total_clicks_test > 0) ? Number((summary_data.total_rt_test / summary_data.total_clicks_test).toFixed(2)) : 0;
+          var all_clicks = summary_data.total_clicks_training + summary_data.total_clicks_test;
+          var mean_rt_all = (all_clicks > 0) ? Number(((summary_data.total_rt_training + summary_data.total_rt_test) / all_clicks).toFixed(2)) : 0;
 
           jsPsych.data.addProperties({
               condition: experiment_data.condition || '不明',
@@ -1266,6 +1389,9 @@
               training_duration_sec: train_time,
               test_duration_sec: test_time,
               total_experiment_sec: total_time,
+              mean_rt_training: mean_rt_train,
+              mean_rt_test: mean_rt_test,
+              mean_rt_all: mean_rt_all,
               total_coins_lost_training: typeof total_coins !== 'undefined' ? total_coins : 0,
               total_coins_lost_test: typeof total_coins_test !== 'undefined' ? total_coins_test : 0, 
               total_coins_lost_all: (typeof total_coins !== 'undefined' ? total_coins : 0) + (typeof total_coins_test !== 'undefined' ? total_coins_test : 0),
@@ -1289,7 +1415,25 @@
               post_happy: experiment_data.post_happy || '未回答',
               post_relax: experiment_data.post_relax || '未回答',
               post_disappoint: experiment_data.post_disappoint || '未回答',
-              post_tension: experiment_data.post_tension || '未回答'
+              post_tension: experiment_data.post_tension || '未回答',
+              gpt2s_1a: experiment_data.gpt2s_1a || '未回答',
+              gpt2s_1b: experiment_data.gpt2s_1b || '未回答',
+              gpt2s_2a: experiment_data.gpt2s_2a || '未回答',
+              gpt2s_2b: experiment_data.gpt2s_2b || '未回答',
+              gpt2s_3a: experiment_data.gpt2s_3a || '未回答',
+              gpt2s_3b: experiment_data.gpt2s_3b || '未回答',
+              gpt2s_4a: experiment_data.gpt2s_4a || '未回答',
+              gpt2s_4b: experiment_data.gpt2s_4b || '未回答',
+              gpt2s_5a: experiment_data.gpt2s_5a || '未回答',
+              gpt2s_5b: experiment_data.gpt2s_5b || '未回答',
+              gpt2s_6a: experiment_data.gpt2s_6a || '未回答',
+              gpt2s_6b: experiment_data.gpt2s_6b || '未回答',
+              gpt2s_7a: experiment_data.gpt2s_7a || '未回答',
+              gpt2s_7b: experiment_data.gpt2s_7b || '未回答',
+              gpt2s_8a: experiment_data.gpt2s_8a || '未回答',
+              gpt2s_8b: experiment_data.gpt2s_8b || '未回答',
+              gpt2s_tracking_total: experiment_data.gpt2s_tracking_total || 0,
+              gpt2s_pliance_total: experiment_data.gpt2s_pliance_total || 0
           });
 
           var now = new Date();
